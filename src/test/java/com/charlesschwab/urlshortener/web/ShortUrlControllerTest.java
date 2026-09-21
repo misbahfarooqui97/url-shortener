@@ -70,6 +70,18 @@ class ShortUrlControllerTest {
     }
 
     @Test
+    void createReturns400ForOversizedUrl() throws Exception {
+        String oversizedUrl = "https://example.com/" + "x".repeat(2100);
+        mockMvc.perform(post("/api/v1/short-urls")
+                        .contentType("application/json")
+                        .content("{\"url\": \"" + oversizedUrl + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("exceeds maximum length")));
+    }
+
+    @Test
     void createReturns400WhenServiceRejectsUrl() throws Exception {
         when(shortUrlService.createShortUrl(anyString()))
                 .thenThrow(new InvalidUrlException("url must be an absolute http or https URL"));

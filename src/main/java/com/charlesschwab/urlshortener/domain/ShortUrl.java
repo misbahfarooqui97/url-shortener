@@ -7,6 +7,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -24,7 +25,11 @@ import java.util.Objects;
         name = "short_urls",
         indexes = {
                 @Index(name = "idx_short_urls_code", columnList = "code", unique = true),
-                @Index(name = "idx_short_urls_normalized_url", columnList = "normalized_url")
+                @Index(name = "idx_short_urls_normalized_url_active", columnList = "normalized_url, active")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_short_urls_normalized_url",
+                        columnNames = {"normalized_url"})
         }
 )
 public class ShortUrl {

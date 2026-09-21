@@ -72,7 +72,7 @@ class ShortUrlServiceTest {
         when(shortUrlRepository.findByNormalizedUrlAndActiveTrue(any())).thenReturn(Optional.empty());
         when(shortCodeGenerator.generate()).thenReturn("aB91xY1");
         when(shortUrlRepository.existsByCode("aB91xY1")).thenReturn(false);
-        when(shortUrlRepository.save(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(shortUrlRepository.saveAndFlush(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ShortUrl result = service.createShortUrl(originalUrl);
 
@@ -110,7 +110,7 @@ class ShortUrlServiceTest {
         when(shortCodeGenerator.generate()).thenReturn("collide", "collide", "unique1");
         when(shortUrlRepository.existsByCode("collide")).thenReturn(true);
         when(shortUrlRepository.existsByCode("unique1")).thenReturn(false);
-        when(shortUrlRepository.save(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(shortUrlRepository.saveAndFlush(any(ShortUrl.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ShortUrl result = service.createShortUrl("https://example.com");
 

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * Business rules for the URL shortener, independent of the HTTP layer:
@@ -57,14 +58,44 @@ public class ShortUrlService {
         this.clock = clock;
     }
 
-    @Transactional
     public ShortUrl createShortUrl(String originalUrl) {
         urlValidator.validate(originalUrl);
         String normalizedUrl = urlNormalizer.normalize(originalUrl);
 
-        return shortUrlRepository.findByNormalizedUrlAndActiveTrue(normalizedUrl)
-                .orElseGet(() -> shortUrlRepository.save(
-                        new ShortUrl(generateUniqueCode(), originalUrl, normalizedUrl, Instant.now(clock))));
+        // Try up to 5 times to create or retrieve the short URL.
+        // On race condition (both threads try to insert same normalized URL),
+        // the second one will hit a constraint violation and retry-fetch.
+        for (int attempt = 0; attempt < 5; attempt++) {
+            try {
+                return createShortUrlInternal(normalizedUrl, originalUrl);
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // Race condition: another thread inserted the same normalized URL.
+                // Try to fetch it. If found, return it. Otherwise, retry creation.
+                Optional<ShortUrl> existing = shortUrlRepository.findByNormalizedUrlAndActiveTrue(normalizedUrl);
+                if (existing.isPresent()) {
+                    return existing.get();
+                }
+                // If not found, loop again (might be a different constraint violation).
+                if (attempt == 4) {
+                    throw new IllegalStateException(
+                            "Could not create or fetch normalized URL after 5 attempts", e);
+                }
+            }
+        }
+        throw new IllegalStateException("Failed to create or retrieve short URL after 5 attempts");
+    }
+
+    @Transactional
+    private ShortUrl createShortUrlInternal(String normalizedUrl, String originalUrl) {
+        // Check if it already exists (might have been inserted by another thread in previous attempt)
+        Optional<ShortUrl> existing = shortUrlRepository.findByNormalizedUrlAndActiveTrue(normalizedUrl);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        // Insert new row. If constraint violation occurs, caller's retry will catch it.
+        ShortUrl newUrl = new ShortUrl(generateUniqueCode(), originalUrl, normalizedUrl, Instant.now(clock));
+        return shortUrlRepository.saveAndFlush(newUrl);
     }
 
     @Transactional
