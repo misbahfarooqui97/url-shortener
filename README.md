@@ -135,8 +135,8 @@ Expected result: **82 tests passing** (unit, integration, end-to-end, concurrenc
 ```
 
 Artifacts:
-- `target/urlshortener-1.0-SNAPSHOT.jar` — executable JAR for deployment
-- Runnable on any system with Java 21+: `java -jar target/urlshortener-1.0-SNAPSHOT.jar`
+- `target/urlshortener-1.0.0-SNAPSHOT.jar` — executable JAR for deployment
+- Runnable on any system with Java 21+: `java -jar target/urlshortener-1.0.0-SNAPSHOT.jar`
 
 ## Design decisions and trade-offs
 
@@ -156,6 +156,22 @@ The project demonstrates engineering judgment through three evaluation scenarios
 3. **Ambiguous-requirement scenario:** Decide what happens when a client submits the same URL twice (chose: reuse the existing code, per ADR-001).
 
 All three scenarios are delivered end-to-end in this submission. See [docs/engineering-summary.md § 3](docs/engineering-summary.md#3-required-assignment-scenarios) for detailed scenario narratives and acceptance criteria.
+
+## Troubleshooting
+
+| Issue | Cause | Fix |
+|---|---|---|
+| `./mvnw.cmd` / `mvnw.exe` not recognized in PowerShell | PowerShell doesn't load commands from the current directory by default, and there is no `mvnw.exe` (only `mvnw.cmd`/`mvnw`) | Run `.\mvnw.cmd ...` with the leading `.\` |
+| `clean : term not recognized` | Maven goals were run without the wrapper prefix (e.g. `clean package` typed directly) | Always prefix with `.\mvnw.cmd`, e.g. `.\mvnw.cmd clean package -DskipTests` |
+| `404 Not Found` on `/api/short-urls` | Missing API version segment | Correct path is `/api/v1/short-urls` (see [docs/specs/api-specification.md](docs/specs/api-specification.md)) |
+| `400 Bad Request` with unexpected field errors | Using `originalUrl` instead of `url` in the request body | The create-request DTO field is `url`, e.g. `{"url": "https://example.com"}` |
+| Postman returns `200` and the target page's HTML instead of a `302` | Postman's **"Automatically follow redirects"** setting is on | Settings → Redirects → turn off "Automatically follow redirects", then re-send the `GET /{code}` request to see the raw `302` and its `Location` header |
+| `Address already in use` / app won't bind to port 8080 | A previous `java` process (from an earlier `mvnw` or `java -jar` run) is still holding the port | Find and stop it: `Get-Process java \| Stop-Process -Force`, or find the PID with `netstat -ano \| findstr :8080` and `Stop-Process -Id <PID>` |
+| `Error: Unable to access jarfile target\...` | Wrong filename/casing (project artifact id is `urlshortener`, not `url-shortener`) or wrong working directory | Check the actual name with `ls target\*.jar`, run from the repo root, e.g. `java -jar target\urlshortener-1.0.0-SNAPSHOT.jar` |
+| Invalid `<version>` in `pom.xml` (e.g. `RELEASE-SNAPSHOT`) breaks the build | Maven requires a real version number | Use a semantic version + optional `-SNAPSHOT` suffix, e.g. `1.0.0-SNAPSHOT` or `1.0.0` |
+| `docker run` container works but no data persists / no Postgres | Running the image directly with `docker run` bypasses the `db` service defined in `docker-compose.yml` | Use `docker compose up --build` instead, which starts both the app and PostgreSQL together and wires them via `SPRING_DATASOURCE_URL` |
+| Docker container serves stale behavior after a code/version change | Compose reused a cached image layer | Rebuild explicitly: `docker compose down` then `docker compose up -d --build` |
+| Shell curl on Windows PowerShell fails to parse JSON body | PowerShell's quoting/escaping for `curl.exe -d '{"url": "..."}'` conflicts with native `Invoke-WebRequest` aliasing | Prefer Postman for JSON bodies, or use `curl.exe` explicitly (not the `curl` alias) with backtick-escaped quotes |
 
 ## Current delivery status
 
