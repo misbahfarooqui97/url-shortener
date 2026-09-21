@@ -186,6 +186,14 @@ Short codes are randomly generated (not derived from a hash or sequence of the U
 - Avoids predictable/guessable codes.
 - Decouples code format from URL content, so the same normalized URL will still reuse its own code (ADR-001) without needing to recompute a hash on every lookup.
 
+**Alternative considered: hash-based codes (e.g., truncated MD5/SHA-256 of the URL)**
+
+Rejected for this design:
+
+- Hash truncation still collides (two different URLs can map to the same prefix), so a fallback strategy (salting, extra characters, or a sequence suffix) is still required — it does not actually remove the retry/collision problem, just changes its shape.
+- The main benefit of hashing — the same input URL always produces the same code, avoiding duplicate rows — is already provided by the duplicate-submission lookup in ADR-001 (reuse by normalized URL), so hashing would be redundant for that purpose.
+- A truncated hash of the URL can create a false impression of an obfuscation/security property it doesn't actually provide, and offers no advantage over a random code once dedup is handled elsewhere.
+
 **Consequences**
 
 - Collision handling must be tested under the maximum retry bound; exhausting retries must fail with a clear, non-leaking error rather than looping indefinitely.
