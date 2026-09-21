@@ -295,6 +295,31 @@ The assignment asks for three execution scenarios. These are not three separate 
 - New modules are isolated by responsibility.
 - Docker startup uses the same application artifact as local execution.
 
+**Bug fix example (analytics timestamps swapped):**
+
+While extending the analytics feature, the unit test suite caught a bug in
+`ShortUrlService.getAnalytics(...)`: the ascending and descending "first click" repository
+lookups were swapped, so `firstAccessedAt` reported the most recent click and
+`lastAccessedAt` reported the earliest one. This is a realistic brownfield-style defect —
+it does not fail to compile, does not throw, and returns plausible-looking data, so it is
+the kind of bug that only shows up through behavioral assertions or careful review, not
+casual manual testing.
+
+- **Detection:** `ShortUrlServiceTest#returnsAnalyticsWithClickCountAndTimestamps` failed,
+  asserting `firstAccessedAt` against a fixture value and getting the most-recent
+  timestamp instead.
+- **Root cause:** `findFirstByShortUrlOrderByAccessedAtAsc(...)` (earliest click) and
+  `findFirstByShortUrlOrderByAccessedAtDesc(...)` (most recent click) were assigned to the
+  wrong local variables.
+- **Fix:** corrected the assignment so ascending-order results back `firstAccessedAt` and
+  descending-order results back `lastAccessedAt`.
+- **Regression coverage:** added
+  `reportsFirstAccessedAtBeforeLastAccessedAtAcrossMultipleClicks`, which asserts the
+  chronological relationship (`firstAccessedAt` is before `lastAccessedAt`) explicitly,
+  rather than only asserting equality against fixture values — so a future regression of
+  this same kind (right values, wrong variable) fails clearly instead of only failing when
+  the two fixture instants happen not to match by coincidence.
+
 ### Ambiguous-requirement scenario
 
 **Scenario statement:** Decide what should happen when a client submits the same original URL more than once.

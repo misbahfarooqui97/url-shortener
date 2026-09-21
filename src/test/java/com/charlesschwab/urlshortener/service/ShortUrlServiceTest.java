@@ -173,6 +173,34 @@ class ShortUrlServiceTest {
         assertThat(result.lastAccessedAt()).isEqualTo(last);
     }
 
+    /**
+     * Regression test for a bug where {@code firstAccessedAt}/{@code lastAccessedAt} were
+     * sourced from the wrong repository query (the ascending and descending "first click"
+     * lookups were swapped), silently reporting the most recent click as the first one and
+     * vice versa. Asserts the chronological relationship explicitly, not just equality
+     * against fixture values, so a future regression of this kind fails clearly.
+     */
+    @Test
+    void reportsFirstAccessedAtBeforeLastAccessedAtAcrossMultipleClicks() {
+        ShortUrl shortUrl = new ShortUrl("aB91xY1", "https://example.com", "https://example.com", FIXED_INSTANT);
+        Instant earliest = FIXED_INSTANT.minusSeconds(300);
+        Instant middle = FIXED_INSTANT.minusSeconds(150);
+        Instant mostRecent = FIXED_INSTANT.minusSeconds(5);
+        when(cachedShortUrlLookup.findByCode("aB91xY1")).thenReturn(shortUrl);
+        when(clickEventRepository.countByShortUrl(shortUrl)).thenReturn(3L);
+        when(clickEventRepository.findFirstByShortUrlOrderByAccessedAtAsc(shortUrl))
+                .thenReturn(Optional.of(new ClickEvent(shortUrl, earliest)));
+        when(clickEventRepository.findFirstByShortUrlOrderByAccessedAtDesc(shortUrl))
+                .thenReturn(Optional.of(new ClickEvent(shortUrl, mostRecent)));
+
+        AnalyticsResult result = service.getAnalytics("aB91xY1");
+
+        assertThat(result.firstAccessedAt()).isEqualTo(earliest);
+        assertThat(result.lastAccessedAt()).isEqualTo(mostRecent);
+        assertThat(result.firstAccessedAt()).isBefore(result.lastAccessedAt());
+        assertThat(middle).isBetween(result.firstAccessedAt(), result.lastAccessedAt());
+    }
+
     @Test
     void returnsZeroClicksAndNullTimestampsForNeverAccessedCode() {
         ShortUrl shortUrl = new ShortUrl("aB91xY1", "https://example.com", "https://example.com", FIXED_INSTANT);
