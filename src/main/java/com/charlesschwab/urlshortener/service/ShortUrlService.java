@@ -24,6 +24,8 @@ import java.time.Instant;
  * </ul>
  * Unknown codes are reported via {@link ShortUrlNotFoundException} (FR-4) so the HTTP
  * layer can translate it to a {@code 404} without this service knowing about HTTP.
+ * Code lookups for {@link #resolve(String)} and {@link #getAnalytics(String)} go through
+ * {@link CachedShortUrlLookup} (see its Javadoc for the caching strategy and trade-offs).
  */
 @Service
 public class ShortUrlService {
@@ -35,6 +37,7 @@ public class ShortUrlService {
     private final ShortCodeGenerator shortCodeGenerator;
     private final UrlValidator urlValidator;
     private final UrlNormalizer urlNormalizer;
+    private final CachedShortUrlLookup cachedShortUrlLookup;
     private final Clock clock;
 
     public ShortUrlService(
@@ -43,12 +46,14 @@ public class ShortUrlService {
             ShortCodeGenerator shortCodeGenerator,
             UrlValidator urlValidator,
             UrlNormalizer urlNormalizer,
+            CachedShortUrlLookup cachedShortUrlLookup,
             Clock clock) {
         this.shortUrlRepository = shortUrlRepository;
         this.clickEventRepository = clickEventRepository;
         this.shortCodeGenerator = shortCodeGenerator;
         this.urlValidator = urlValidator;
         this.urlNormalizer = urlNormalizer;
+        this.cachedShortUrlLookup = cachedShortUrlLookup;
         this.clock = clock;
     }
 
@@ -64,16 +69,14 @@ public class ShortUrlService {
 
     @Transactional
     public ShortUrl resolve(String code) {
-        ShortUrl shortUrl = shortUrlRepository.findByCode(code)
-                .orElseThrow(() -> new ShortUrlNotFoundException(code));
+        ShortUrl shortUrl = findActiveByCodeOrThrow(code);
         clickEventRepository.save(new ClickEvent(shortUrl, Instant.now(clock)));
         return shortUrl;
     }
 
     @Transactional(readOnly = true)
     public AnalyticsResult getAnalytics(String code) {
-        ShortUrl shortUrl = shortUrlRepository.findByCode(code)
-                .orElseThrow(() -> new ShortUrlNotFoundException(code));
+        ShortUrl shortUrl = findActiveByCodeOrThrow(code);
 
         long totalClicks = clickEventRepository.countByShortUrl(shortUrl);
         Instant firstAccessedAt = clickEventRepository.findFirstByShortUrlOrderByAccessedAtAsc(shortUrl)
@@ -84,6 +87,14 @@ public class ShortUrlService {
                 .orElse(null);
 
         return new AnalyticsResult(shortUrl.getCode(), shortUrl.getOriginalUrl(), totalClicks, firstAccessedAt, lastAccessedAt);
+    }
+
+    private ShortUrl findActiveByCodeOrThrow(String code) {
+        ShortUrl shortUrl = cachedShortUrlLookup.findByCode(code);
+        if (shortUrl == null) {
+            throw new ShortUrlNotFoundException(code);
+        }
+        return shortUrl;
     }
 
     private String generateUniqueCode() {

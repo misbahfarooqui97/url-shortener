@@ -58,8 +58,10 @@ acceptance criteria.
 | `UrlValidator` | Rejects blank, over-length, malformed, or non-http(s) URLs (FR-2). |
 | `UrlNormalizer` | Produces the canonical form of a URL used to detect duplicates (lower-cased host/scheme, default port removed, trailing slash normalized, fragment dropped, query preserved). Backs ADR-001. |
 | `ShortCodeGenerator` / `RandomShortCodeGenerator` | Generates a random, fixed-length alphanumeric code. Never derived from the URL (ADR-002). |
-| `ShortUrlService` | Orchestrates the above: validate → normalize → reuse-or-create (ADR-001) → generate-with-retry (ADR-002) on create; look up + record a click on resolve; aggregate click data on analytics. This is the single entry point the web layer will call. |
+| `CachedShortUrlLookup` | Caches the code → `ShortUrl` lookup used by resolve/analytics with Caffeine (ADR-004). A separate bean from `ShortUrlService` so Spring's `@Cacheable` proxy is actually invoked (calling a `@Cacheable` method from within the same class bypasses the proxy). Cache misses are never cached, so a newly created code is visible immediately. |
+| `ShortUrlService` | Orchestrates the above: validate → normalize → reuse-or-create (ADR-001) → generate-with-retry (ADR-002) on create; look up (via `CachedShortUrlLookup`) + record a click on resolve; aggregate click data on analytics. This is the single entry point the web layer will call. |
 | `ClockConfig` | Supplies an injectable `Clock` bean so timestamps can be fixed in unit tests instead of depending on `Instant.now()` directly. |
+| `CacheConfig` | Enables Spring's caching support (`@EnableCaching`); the actual `CacheManager` (Caffeine) is auto-configured from `spring.cache.*` properties. |
 
 ### Exceptions (`exception`)
 

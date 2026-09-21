@@ -102,12 +102,13 @@ AI tools are used within individual tasks (implementation drafts, test generatio
 
 **Commit:** `feat: expose URL shortener REST APIs`
 
-### Phase 5 — Reliability and security hardening
+### Phase 5 — Reliability, performance, and security hardening
 
-**Objective:** Address concurrency, abuse, and operational risks called out in the requirements specification.
+**Objective:** Address concurrency, latency, abuse, and operational risks called out in the requirements specification.
 
 **Scope:**
 
+- In-memory caching (Caffeine) for the redirect/analytics code lookup, to keep the highest-traffic path (NFR-1) fast without adding external infrastructure (ADR-004).
 - Concurrency test for simultaneous short-code creation (NFR-1).
 - Request size and input limits.
 - Review of open-redirect and unsafe-scheme risks.
@@ -116,6 +117,7 @@ AI tools are used within individual tasks (implementation drafts, test generatio
 **Acceptance criteria:**
 
 - Concurrency behavior is tested or explicitly bounded and documented.
+- Cache behavior (hit, miss, no negative caching) is covered by tests.
 - Security review findings are recorded in this document's risk log.
 
 **Commit:** `hardening: improve reliability and security controls`
@@ -216,6 +218,26 @@ The application uses JPA against an environment-selected datasource: H2 (in-memo
 **Consequences**
 
 - Integration tests that assert Postgres-specific behavior (if any are added later) must run against Testcontainers-managed Postgres, not H2, since H2's compatibility mode does not cover every Postgres-specific feature.
+
+### ADR-004: In-memory caching for the redirect lookup
+
+**Date:** 2026-09-21
+**Status:** Accepted
+
+**Decision**
+
+The code-to-`ShortUrl` lookup used by the redirect and analytics endpoints is cached in-process with Caffeine (`spring-boot-starter-cache` + Spring's `@Cacheable`), keyed by short code. The lookup is isolated in its own component, `CachedShortUrlLookup`, rather than annotated directly on a `ShortUrlService` method, to avoid Spring AOP's self-invocation proxy-bypass problem.
+
+**Rationale**
+
+- The redirect endpoint is the highest-traffic path in the system (NFR-1 targets low-latency redirects), and it is a pure read of otherwise-immutable data (a short code's target URL does not change once created).
+- Caching only successful lookups (`unless = "#result == null"`) means an unknown code is never cached as a miss, so a code created immediately after a prior 404 is visible on the very next request.
+- A bounded cache (`maximumSize=10000`) with a short TTL (`expireAfterWrite=30s`) keeps memory use predictable and limits how long a change could be invisible, without requiring an explicit invalidation/eviction mechanism for the current feature set.
+
+**Consequences**
+
+- There is no explicit cache eviction today. This is an accepted trade-off: no current code path deactivates or mutates an existing `ShortUrl`, so the only staleness window is the 30-second TTL. If a "deactivate/delete a short URL" feature is added later, the cache entry for that code must be explicitly evicted at that point (e.g., `@CacheEvict`) rather than relying on the TTL alone.
+- The cache is local to a single application instance (Caffeine, not a shared/distributed cache). If the service is ever scaled to multiple instances, this trade-off should be revisited (e.g., a shared cache, or accepting per-instance staleness as before).
 
 ---
 
@@ -326,4 +348,5 @@ Entries are added as tasks are completed. Each entry states what was asked for, 
 
 ## 5. Risks, trade-offs, and limitations
 
-<!-- Populated as phases 5 and 6 are executed: known risks, accepted trade-offs, and explicit limitations of the delivered prototype. -->
+- **Cache staleness on deactivation (accepted).** `CachedShortUrlLookup` caches successful code lookups for up to 30 seconds (see ADR-004). No code path currently deactivates a `ShortUrl`, so this has no observable effect today. If a deactivation/delete feature is added, the cache entry for that code must be evicted explicitly rather than relying on the TTL to expire it.
+- **Cache is per-instance, not shared (accepted for a single-instance deployment).** Caffeine keeps the cache in the JVM's memory. If the application is horizontally scaled, each instance would cache independently; this is acceptable for the current scope but would need revisiting (e.g., a shared cache) if multi-instance deployment is required.

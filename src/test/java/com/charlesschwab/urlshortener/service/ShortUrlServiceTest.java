@@ -48,6 +48,9 @@ class ShortUrlServiceTest {
     @Mock
     private ShortCodeGenerator shortCodeGenerator;
 
+    @Mock
+    private CachedShortUrlLookup cachedShortUrlLookup;
+
     private ShortUrlService service;
 
     @BeforeEach
@@ -59,6 +62,7 @@ class ShortUrlServiceTest {
                 shortCodeGenerator,
                 new UrlValidator(),
                 new UrlNormalizer(),
+                cachedShortUrlLookup,
                 fixedClock);
     }
 
@@ -129,7 +133,7 @@ class ShortUrlServiceTest {
     @Test
     void resolvesActiveCodeAndRecordsClickEvent() {
         ShortUrl shortUrl = new ShortUrl("aB91xY1", "https://example.com", "https://example.com", FIXED_INSTANT);
-        when(shortUrlRepository.findByCode("aB91xY1")).thenReturn(Optional.of(shortUrl));
+        when(cachedShortUrlLookup.findByCode("aB91xY1")).thenReturn(shortUrl);
 
         ShortUrl result = service.resolve("aB91xY1");
 
@@ -140,7 +144,7 @@ class ShortUrlServiceTest {
 
     @Test
     void throwsNotFoundForUnknownCodeOnResolve() {
-        when(shortUrlRepository.findByCode("missing")).thenReturn(Optional.empty());
+        when(cachedShortUrlLookup.findByCode("missing")).thenReturn(null);
 
         assertThatThrownBy(() -> service.resolve("missing"))
                 .isInstanceOf(ShortUrlNotFoundException.class);
@@ -153,7 +157,7 @@ class ShortUrlServiceTest {
         ShortUrl shortUrl = new ShortUrl("aB91xY1", "https://example.com", "https://example.com", FIXED_INSTANT);
         Instant first = FIXED_INSTANT.minusSeconds(120);
         Instant last = FIXED_INSTANT.minusSeconds(10);
-        when(shortUrlRepository.findByCode("aB91xY1")).thenReturn(Optional.of(shortUrl));
+        when(cachedShortUrlLookup.findByCode("aB91xY1")).thenReturn(shortUrl);
         when(clickEventRepository.countByShortUrl(shortUrl)).thenReturn(42L);
         when(clickEventRepository.findFirstByShortUrlOrderByAccessedAtAsc(shortUrl))
                 .thenReturn(Optional.of(new ClickEvent(shortUrl, first)));
@@ -172,7 +176,7 @@ class ShortUrlServiceTest {
     @Test
     void returnsZeroClicksAndNullTimestampsForNeverAccessedCode() {
         ShortUrl shortUrl = new ShortUrl("aB91xY1", "https://example.com", "https://example.com", FIXED_INSTANT);
-        when(shortUrlRepository.findByCode("aB91xY1")).thenReturn(Optional.of(shortUrl));
+        when(cachedShortUrlLookup.findByCode("aB91xY1")).thenReturn(shortUrl);
         when(clickEventRepository.countByShortUrl(shortUrl)).thenReturn(0L);
         when(clickEventRepository.findFirstByShortUrlOrderByAccessedAtAsc(shortUrl)).thenReturn(Optional.empty());
         when(clickEventRepository.findFirstByShortUrlOrderByAccessedAtDesc(shortUrl)).thenReturn(Optional.empty());
@@ -186,7 +190,7 @@ class ShortUrlServiceTest {
 
     @Test
     void throwsNotFoundForUnknownCodeOnAnalytics() {
-        when(shortUrlRepository.findByCode("missing")).thenReturn(Optional.empty());
+        when(cachedShortUrlLookup.findByCode("missing")).thenReturn(null);
 
         assertThatThrownBy(() -> service.getAnalytics("missing"))
                 .isInstanceOf(ShortUrlNotFoundException.class);
