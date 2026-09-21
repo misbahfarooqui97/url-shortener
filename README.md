@@ -8,6 +8,7 @@ Spring Boot URL shortener built for the AI-assisted software engineering assignm
 |---|---|
 | [docs/specs/requirements-specification.md](docs/specs/requirements-specification.md) | Normalized, approved requirements — the source of truth for scope |
 | [docs/specs/api-specification.md](docs/specs/api-specification.md) | Binding API contract implementation must conform to |
+| [docs/architecture.md](docs/architecture.md) | Layered architecture, component responsibilities, and request flows |
 | [docs/engineering-summary.md](docs/engineering-summary.md) | Delivery plan, decision log, required scenarios, AI-assisted execution log, and risks/trade-offs |
 
 ## Prerequisites
